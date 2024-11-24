@@ -130,8 +130,10 @@ def cors_headers():
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": os.getenv("FRONTEND_URL", "http://localhost:3003"),
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        "Access-Control-Allow-Methods": "OPTIONS, POST",
+        "Access-Control-Allow-Methods": "OPTIONS, POST, GET",
     }
+
+
 
 
 def generate_cors_response():
@@ -141,5 +143,10 @@ def generate_cors_response():
     return {
         "statusCode": 204,
         "body": "",
-        "headers": cors_headers(),
+        "headers": {
+            "Access-Control-Allow-Origin": os.getenv("FRONTEND_URL", "http://localhost:3003"),
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Allow-Methods": "OPTIONS, POST",
+        },
     }
+

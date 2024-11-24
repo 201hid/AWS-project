@@ -17,7 +17,7 @@ Resources:
         Variables:
           GOOGLE_CLIENT_ID: !Ref GoogleClientId
           GOOGLE_CLIENT_SECRET: !Ref GoogleClientSecret
-          REDIRECT_URI: "http://localhost:3000"  # Update for production
+          REDIRECT_URI: "http://localhost:3003"  # Update for production
       Events:
         ApiEvent:
           Type: Api

@@ -5,18 +5,18 @@ Parameters:
   GoogleClientId:
     Type: String
     Description: Google OAuth Client ID
-    Default: 128876871494-tdd9p4khk95q2eih64n8cfn9le2r12vf.apps.googleusercontent.com
+    Default: 128876871494-ddangphp27biloi2uoikvr9o21bhgrll.apps.googleusercontent.com
   GoogleClientSecret:
     Type: String
     Description: Google OAuth Client Secret
-    Default: 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
+    Default: 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
 Resources:
   AuthApi:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
       Cors:
-        AllowMethods: '''OPTIONS, POST, GET'''
+        AllowMethods: '''OPTIONS, POST'''
         AllowHeaders: '''Content-Type, Authorization'''
         AllowOrigin: '''http://localhost:3003'''
   AuthFunction:
