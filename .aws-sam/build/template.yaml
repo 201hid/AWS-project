@@ -23,7 +23,7 @@ Resources:
             Ref: GoogleClientId
           GOOGLE_CLIENT_SECRET:
             Ref: GoogleClientSecret
-          REDIRECT_URI: https://b1piz7m33i.execute-api.us-east-1.amazonaws.com/Prod/auth/google/callback
+          REDIRECT_URI: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google/callback
       Policies:
       - AWSLambdaBasicExecutionRole
       Events:
@@ -31,7 +31,12 @@ Resources:
           Type: Api
           Properties:
             Path: /auth/google
-            Method: POST
+            Method: GET
+        GoogleAuthCallback:
+          Type: Api
+          Properties:
+            Path: /auth/google/callback
+            Method: GET
     Metadata:
       SamResourceId: AuthFunction
 Outputs:
@@ -39,3 +44,7 @@ Outputs:
     Description: API Endpoint for Google OAuth
     Value:
       Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google
+  GoogleAuthCallbackEndpoint:
+    Description: API Callback Endpoint for Google OAuth
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google/callback
