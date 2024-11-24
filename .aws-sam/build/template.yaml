@@ -11,6 +11,14 @@ Parameters:
     Description: Google OAuth Client Secret
     Default: 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
 Resources:
+  AuthApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: '''OPTIONS, POST, GET'''
+        AllowHeaders: '''Content-Type, Authorization'''
+        AllowOrigin: '''http://localhost:3003'''
   AuthFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -23,28 +31,33 @@ Resources:
             Ref: GoogleClientId
           GOOGLE_CLIENT_SECRET:
             Ref: GoogleClientSecret
-          REDIRECT_URI: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google/callback
+          REDIRECT_URI: https://${AuthApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google/callback
+          FRONTEND_URL: http://localhost:3003
       Policies:
       - AWSLambdaBasicExecutionRole
       Events:
         GoogleAuth:
           Type: Api
           Properties:
+            RestApiId:
+              Ref: AuthApi
             Path: /auth/google
-            Method: GET
+            Method: POST
         GoogleAuthCallback:
           Type: Api
           Properties:
+            RestApiId:
+              Ref: AuthApi
             Path: /auth/google/callback
-            Method: GET
+            Method: POST
     Metadata:
       SamResourceId: AuthFunction
 Outputs:
   GoogleAuthEndpoint:
     Description: API Endpoint for Google OAuth
     Value:
-      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google
+      Fn::Sub: https://${AuthApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google
   GoogleAuthCallbackEndpoint:
     Description: API Callback Endpoint for Google OAuth
     Value:
-      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google/callback
+      Fn::Sub: https://${AuthApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google/callback
