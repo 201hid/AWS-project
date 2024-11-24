@@ -1,6 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Authentication Project with Google OAuth
+
 Parameters:
   GoogleClientId:
     Type: String
@@ -10,41 +11,51 @@ Parameters:
     Type: String
     Description: Google OAuth Client Secret
     Default: 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
+
 Resources:
+  AuthApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: "'OPTIONS, POST, GET'"
+        AllowHeaders: "'Content-Type, Authorization'"
+        AllowOrigin: "'http://localhost:3003'"
+
   AuthFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.lambda_handler
       Runtime: python3.9
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-p2ie4tucylsk/sam-app/78fb8af736c3a26b84412a8c5673800c
+      CodeUri: ./src
       Environment:
         Variables:
-          GOOGLE_CLIENT_ID:
-            Ref: GoogleClientId
-          GOOGLE_CLIENT_SECRET:
-            Ref: GoogleClientSecret
-          REDIRECT_URI: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google/callback
+          GOOGLE_CLIENT_ID: !Ref GoogleClientId
+          GOOGLE_CLIENT_SECRET: !Ref GoogleClientSecret
+          REDIRECT_URI: https://${AuthApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google/callback
+          FRONTEND_URL: http://localhost:3003
       Policies:
-      - AWSLambdaBasicExecutionRole
+        - AWSLambdaBasicExecutionRole
       Events:
         GoogleAuth:
           Type: Api
           Properties:
+            RestApiId: !Ref AuthApi
             Path: /auth/google
-            Method: GET
+            Method: POST
         GoogleAuthCallback:
           Type: Api
           Properties:
+            RestApiId: !Ref AuthApi
             Path: /auth/google/callback
-            Method: GET
-    Metadata:
-      SamResourceId: AuthFunction
+            Method: POST
+
 Outputs:
   GoogleAuthEndpoint:
     Description: API Endpoint for Google OAuth
     Value:
-      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google
+      Fn::Sub: https://${AuthApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google
   GoogleAuthCallbackEndpoint:
     Description: API Callback Endpoint for Google OAuth
     Value:
-      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google/callback
+      Fn::Sub: https://${AuthApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google/callback
