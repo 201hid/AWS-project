@@ -19,9 +19,18 @@ Resources:
     Properties:
       StageName: Prod
       Cors:
-        AllowMethods: OPTIONS,POST
+        AllowMethods: OPTIONS,POST,GET  # Added GET method for CORS
         AllowHeaders: Content-Type,Authorization
         AllowOrigin: http://localhost:3003
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}'
+
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/api-gateway/AuthApi
+      RetentionInDays: 7
 
   AuthFunction:
     Type: AWS::Serverless::Function
@@ -67,6 +76,12 @@ Resources:
             RestApiId: !Ref AuthApi
             Path: /auth/google/callback
             Method: OPTIONS
+        GoogleAuthCallbackGet:  # Added GET method for /auth/google/callback
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthApi
+            Path: /auth/google/callback
+            Method: GET
 
 Outputs:
   GoogleAuthEndpoint:

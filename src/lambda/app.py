@@ -24,9 +24,9 @@ def lambda_handler(event, context: LambdaContext):
         if path == "/auth/google" and http_method == "POST":
             return handle_google_auth_request()
 
-        # Handle Google callback with code
-        elif path == "/auth/google/callback" and http_method == "POST":
-            return handle_google_callback(event)
+        # Handle Google callback with GET (preferred for callback URLs)
+        elif path == "/auth/google/callback" and http_method == "GET":
+            return handle_google_callback_get(event)
 
         # Handle preflight requests for CORS
         elif http_method == "OPTIONS":
@@ -76,36 +76,20 @@ def handle_google_auth_request():
         }
 
 
-def handle_google_callback(event):
+def handle_google_callback_get(event):
     """
-    Handle the callback from Google, exchange the code for a token, and fetch user info.
+    Handle the callback from Google for GET requests, exchange the code for a token, and fetch user info.
     """
-    body = event.get("body")
-    print("Received callback body:", body)  # Log full body for debugging
+    query_params = event.get("queryStringParameters", {})
+    print("Query parameters:", query_params)  # Log query parameters for debugging
 
-    if not body:
-        return {
-            "statusCode": 400,
-            "body": json.dumps({"error": "Request body is empty or malformed"}),
-            "headers": cors_headers(),
-        }
-
-    try:
-        parsed_body = json.loads(body)
-    except json.JSONDecodeError:
-        return {
-            "statusCode": 400,
-            "body": json.dumps({"error": "Malformed request body"}),
-            "headers": cors_headers(),
-        }
-
-    code = parsed_body.get("code")
+    code = query_params.get("code")
     print("Received authorization code:", code)  # Log received code
 
     if not code:
         return {
             "statusCode": 400,
-            "body": json.dumps({"error": "'code' is missing from the request body"}),
+            "body": json.dumps({"error": "'code' is missing from the query parameters"}),
             "headers": cors_headers(),
         }
 
