@@ -16,9 +16,9 @@ Resources:
     Properties:
       StageName: Prod
       Cors:
-        AllowMethods: '''OPTIONS,POST'''
-        AllowHeaders: '''Content-Type,Authorization'''
-        AllowOrigin: '''http://localhost:3003'''
+        AllowMethods: OPTIONS,POST
+        AllowHeaders: Content-Type,Authorization
+        AllowOrigin: http://localhost:3003
   AuthFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -35,6 +35,12 @@ Resources:
           FRONTEND_URL: http://localhost:3003
       Policies:
       - AWSLambdaBasicExecutionRole
+      - Statement:
+        - Effect: Allow
+          Action:
+          - lambda:InvokeFunction
+          Resource:
+            Fn::Sub: arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}-AuthFunction-${AWS::Region}
       Events:
         GoogleAuth:
           Type: Api
@@ -69,7 +75,9 @@ Resources:
 Outputs:
   GoogleAuthEndpoint:
     Description: API Endpoint for Google OAuth
-    Value: https://${AuthApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google
+    Value:
+      Fn::Sub: https://${AuthApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google
   GoogleAuthCallbackEndpoint:
     Description: API Callback Endpoint for Google OAuth
-    Value: https://${AuthApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google/callback
+    Value:
+      Fn::Sub: https://${AuthApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google/callback

@@ -1,7 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
-const Login = () => {
-  const [user, setUser] = useState(null);
+const Login = ({ setUsername }) => {
   const [error, setError] = useState(null);
 
   const handleLogin = async () => {
@@ -56,7 +55,14 @@ const Login = () => {
       }
 
       const data = await response.json();
-      setUser(data.user);
+
+      // Store the JWT token in localStorage
+      if (data.token) {
+        localStorage.setItem("jwtToken", data.token);
+        setUsername(data.user.name);
+      } else {
+        throw new Error("Authentication token not received.");
+      }
     } catch (err) {
       console.error("Error during callback handling:", err);
       setError("Login failed. Please try again.");
@@ -64,7 +70,7 @@ const Login = () => {
   };
 
   // Automatically handle the callback if the "code" parameter exists in the URL
-  React.useEffect(() => {
+  useEffect(() => {
     if (window.location.search.includes("code")) {
       handleCallback();
     }
@@ -73,19 +79,10 @@ const Login = () => {
   return (
     <div style={{ textAlign: "center", marginTop: "50px" }}>
       <h2>Welcome to the Authentication App</h2>
-      {user ? (
-        <div>
-          <h3>Hi, {user.name}!</h3>
-          <img src={user.picture} alt="Profile" style={{ borderRadius: "50%" }} />
-        </div>
-      ) : (
-        <div>
-          <button onClick={handleLogin} style={{ padding: "10px 20px", fontSize: "16px" }}>
-            Login with Google
-          </button>
-          {error && <p style={{ color: "red" }}>{error}</p>}
-        </div>
-      )}
+      <button onClick={handleLogin} style={{ padding: "10px 20px", fontSize: "16px" }}>
+        Login with Google
+      </button>
+      {error && <p style={{ color: "red" }}>{error}</p>}
     </div>
   );
 };

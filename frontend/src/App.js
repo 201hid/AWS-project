@@ -19,9 +19,13 @@ function App() {
           if (response.ok) {
             const data = await response.json();
             setUsername(data.name);
+          } else {
+            console.error("Failed to fetch user information:", response.statusText);
+            localStorage.removeItem("jwtToken"); // Clear token if invalid
           }
         } catch (error) {
           console.error("Error fetching user:", error);
+          localStorage.removeItem("jwtToken"); // Clear token on error
         }
       }
     };
@@ -32,7 +36,7 @@ function App() {
   return (
     <div className="App">
       <Navbar username={username} />
-      {username ? <Home /> : <Login />}
+      {username ? <Home /> : <Login setUsername={setUsername} />}
     </div>
   );
 }

@@ -1,5 +1,4 @@
 import json
-import os
 import requests
 from aws_lambda_powertools.utilities.typing import LambdaContext
 
@@ -7,6 +6,11 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v1/userinfo"
 
+# Hardcoded values
+HARDCODED_CLIENT_ID = "128876871494-ddangphp27biloi2uoikvr9o21bhgrll.apps.googleusercontent.com"
+HARDCODED_CLIENT_SECRET = "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"
+HARDCODED_REDIRECT_URI = "https://q01x8trvnb.execute-api.us-east-1.amazonaws.com/Prod/auth/google/callback"
+HARDCODED_FRONTEND_URL = "http://localhost:3003"
 
 def lambda_handler(event, context: LambdaContext):
     try:
@@ -37,9 +41,10 @@ def lambda_handler(event, context: LambdaContext):
 
     except Exception as e:
         # General error handling
+        print("Unhandled exception:", str(e))
         return {
             "statusCode": 500,
-            "body": json.dumps({"error": str(e)}),
+            "body": json.dumps({"error": "Internal server error", "details": str(e)}),
             "headers": cors_headers(),
         }
 
@@ -48,19 +53,27 @@ def handle_google_auth_request():
     """
     Generate the Google OAuth URL and return it.
     """
-    redirect_uri = os.getenv("REDIRECT_URI")
-    google_oauth_url = (
-        f"{GOOGLE_AUTH_URL}"
-        f"?response_type=code"
-        f"&client_id={os.getenv('GOOGLE_CLIENT_ID')}"
-        f"&redirect_uri={redirect_uri}"
-        f"&scope=openid%20email%20profile"
-    )
-    return {
-        "statusCode": 200,
-        "body": json.dumps({"redirect_url": google_oauth_url}),
-        "headers": cors_headers(),
-    }
+    try:
+        google_oauth_url = (
+            f"{GOOGLE_AUTH_URL}"
+            f"?response_type=code"
+            f"&client_id={HARDCODED_CLIENT_ID}"
+            f"&redirect_uri={HARDCODED_REDIRECT_URI}"
+            f"&scope=openid%20email%20profile"
+        )
+        print("Generated Google OAuth URL:", google_oauth_url)
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"redirect_url": google_oauth_url}),
+            "headers": cors_headers(),
+        }
+    except Exception as e:
+        print("Error generating Google OAuth URL:", str(e))
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": "Failed to generate Google OAuth URL"}),
+            "headers": cors_headers(),
+        }
 
 
 def handle_google_callback(event):
@@ -68,6 +81,8 @@ def handle_google_callback(event):
     Handle the callback from Google, exchange the code for a token, and fetch user info.
     """
     body = event.get("body")
+    print("Received callback body:", body)  # Log full body for debugging
+
     if not body:
         return {
             "statusCode": 400,
@@ -75,8 +90,18 @@ def handle_google_callback(event):
             "headers": cors_headers(),
         }
 
-    parsed_body = json.loads(body)
+    try:
+        parsed_body = json.loads(body)
+    except json.JSONDecodeError:
+        return {
+            "statusCode": 400,
+            "body": json.dumps({"error": "Malformed request body"}),
+            "headers": cors_headers(),
+        }
+
     code = parsed_body.get("code")
+    print("Received authorization code:", code)  # Log received code
+
     if not code:
         return {
             "statusCode": 400,
@@ -90,14 +115,22 @@ def handle_google_callback(event):
             GOOGLE_TOKEN_URL,
             data={
                 "code": code,
-                "client_id": os.getenv("GOOGLE_CLIENT_ID"),
-                "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
-                "redirect_uri": os.getenv("REDIRECT_URI"),
+                "client_id": HARDCODED_CLIENT_ID,
+                "client_secret": HARDCODED_CLIENT_SECRET,
+                "redirect_uri": HARDCODED_REDIRECT_URI,
                 "grant_type": "authorization_code",
             },
         )
         token_response.raise_for_status()
         token_data = token_response.json()
+        print("Token response:", token_data)
+
+        if "access_token" not in token_data:
+            return {
+                "statusCode": 500,
+                "body": json.dumps({"error": "Access token missing in response"}),
+                "headers": cors_headers(),
+            }
 
         # Fetch user info
         user_response = requests.get(
@@ -106,6 +139,7 @@ def handle_google_callback(event):
         )
         user_response.raise_for_status()
         user_info = user_response.json()
+        print("User info:", user_info)
 
         return {
             "statusCode": 200,
@@ -114,10 +148,10 @@ def handle_google_callback(event):
         }
 
     except requests.exceptions.RequestException as e:
-        # Handle HTTP errors from requests
+        print("Error during callback handling:", str(e))
         return {
             "statusCode": 500,
-            "body": json.dumps({"error": f"HTTP error: {str(e)}"}),
+            "body": json.dumps({"error": "Failed to retrieve data from Google APIs", "details": str(e)}),
             "headers": cors_headers(),
         }
 
@@ -128,12 +162,10 @@ def cors_headers():
     """
     return {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": os.getenv("FRONTEND_URL", "http://localhost:3003"),
+        "Access-Control-Allow-Origin": HARDCODED_FRONTEND_URL,
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
         "Access-Control-Allow-Methods": "OPTIONS, POST, GET",
     }
-
-
 
 
 def generate_cors_response():
@@ -143,10 +175,5 @@ def generate_cors_response():
     return {
         "statusCode": 204,
         "body": "",
-        "headers": {
-            "Access-Control-Allow-Origin": os.getenv("FRONTEND_URL", "http://localhost:3003"),
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-            "Access-Control-Allow-Methods": "OPTIONS, POST",
-        },
+        "headers": cors_headers(),
     }
-
