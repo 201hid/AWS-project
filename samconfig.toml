@@ -6,5 +6,5 @@ s3_prefix = "sam-app"
 region = "us-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "GoogleClientId=\"128876871494-ddangphp27biloi2uoikvr9o21bhgrll.apps.googleusercontent.com\" GoogleClientSecret=\"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\""
+parameter_overrides = "Region=\"us-east-1\" FrontendUrl=\"http://localhost:3003\" GoogleClientId=\"128876871494-ddangphp27biloi2uoikvr9o21bhgrll.apps.googleusercontent.com\" GoogleClientSecret=\"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\""
 image_repositories = []

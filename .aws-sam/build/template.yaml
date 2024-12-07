@@ -1,101 +1,96 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Authentication Project with Google OAuth
+Description: Cognito User Pool with Google OAuth using Hosted UI
 Parameters:
+  Region:
+    Type: String
+    Description: AWS Region
+    Default: us-east-1
+  FrontendUrl:
+    Type: String
+    Description: Frontend application URL
+    Default: http://localhost:3003
   GoogleClientId:
     Type: String
     Description: Google OAuth Client ID
-    Default: 128876871494-ddangphp27biloi2uoikvr9o21bhgrll.apps.googleusercontent.com
   GoogleClientSecret:
     Type: String
     Description: Google OAuth Client Secret
-    Default: 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
 Resources:
-  AuthApi:
-    Type: AWS::Serverless::Api
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
     Properties:
-      StageName: Prod
-      Cors:
-        AllowMethods: OPTIONS,POST,GET
-        AllowHeaders: Content-Type,Authorization
-        AllowOrigin: http://localhost:3003
-      AccessLogSetting:
-        DestinationArn:
-          Fn::GetAtt:
-          - ApiGatewayLogGroup
-          - Arn
-        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}'
-  ApiGatewayLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: /aws/api-gateway/AuthApi
-      RetentionInDays: 7
-  AuthFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: app.lambda_handler
-      Runtime: python3.9
-      CodeUri: AuthFunction
-      Environment:
-        Variables:
-          GOOGLE_CLIENT_ID:
-            Ref: GoogleClientId
-          GOOGLE_CLIENT_SECRET:
-            Ref: GoogleClientSecret
-          REDIRECT_URI: https://q01x8trvnb.execute-api.us-east-1.amazonaws.com/Prod/auth/google/callback
-          FRONTEND_URL: http://localhost:3003
+      UserPoolName: AuthUserPool
+      AutoVerifiedAttributes:
+      - email
       Policies:
-      - AWSLambdaBasicExecutionRole
-      - Statement:
-        - Effect: Allow
-          Action:
-          - lambda:InvokeFunction
-          Resource:
-            Fn::Sub: arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}-AuthFunction-${AWS::Region}
-      Events:
-        GoogleAuth:
-          Type: Api
-          Properties:
-            RestApiId:
-              Ref: AuthApi
-            Path: /auth/google
-            Method: POST
-        GoogleAuthCallback:
-          Type: Api
-          Properties:
-            RestApiId:
-              Ref: AuthApi
-            Path: /auth/google/callback
-            Method: POST
-        GoogleAuthOptions:
-          Type: Api
-          Properties:
-            RestApiId:
-              Ref: AuthApi
-            Path: /auth/google
-            Method: OPTIONS
-        GoogleAuthCallbackOptions:
-          Type: Api
-          Properties:
-            RestApiId:
-              Ref: AuthApi
-            Path: /auth/google/callback
-            Method: OPTIONS
-        GoogleAuthCallbackGet:
-          Type: Api
-          Properties:
-            RestApiId:
-              Ref: AuthApi
-            Path: /auth/google/callback
-            Method: GET
-    Metadata:
-      SamResourceId: AuthFunction
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AliasAttributes:
+      - email
+      Schema:
+      - Name: email
+        AttributeDataType: String
+        Required: true
+        Mutable: true
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: AuthUserPoolClient
+      UserPoolId:
+        Ref: CognitoUserPool
+      GenerateSecret: false
+      AllowedOAuthFlows:
+      - code
+      AllowedOAuthScopes:
+      - email
+      - openid
+      - profile
+      AllowedOAuthFlowsUserPoolClient: true
+      CallbackURLs:
+      - Fn::Sub: ${FrontendUrl}/auth/callback
+      LogoutURLs:
+      - Ref: FrontendUrl
+      SupportedIdentityProviders:
+      - Google
+  CognitoDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain:
+        Fn::Sub: ${AWS::StackName}-auth
+      UserPoolId:
+        Ref: CognitoUserPool
+  CognitoIdentityProviderGoogle:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      ProviderName: Google
+      ProviderType: Google
+      UserPoolId:
+        Ref: CognitoUserPool
+      ProviderDetails:
+        client_id:
+          Ref: GoogleClientId
+        client_secret:
+          Ref: GoogleClientSecret
+        authorize_scopes: email openid profile
+      AttributeMapping:
+        email: email
+        given_name: given_name
+        family_name: family_name
 Outputs:
-  GoogleAuthEndpoint:
-    Description: API Endpoint for Google OAuth
+  UserPoolId:
+    Description: Cognito User Pool ID
     Value:
-      Fn::Sub: https://${AuthApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google
-  GoogleAuthCallbackEndpoint:
-    Description: API Callback Endpoint for Google OAuth
+      Ref: CognitoUserPool
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
     Value:
-      Fn::Sub: https://${AuthApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/google/callback
+      Ref: CognitoUserPoolClient
+  HostedUIDomain:
+    Description: Cognito Hosted UI Domain
+    Value:
+      Fn::Sub: https://${CognitoDomain}.auth.${Region}.amazoncognito.com

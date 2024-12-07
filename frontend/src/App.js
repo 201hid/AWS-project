@@ -1,44 +1,53 @@
-import React, { useState, useEffect } from "react";
-import "./App.css";
-import Navbar from "./components/Navbar";
-import Home from "./components/Home";
-import Login from "./components/Login";
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Navbar from './components/Navbar';
+import User from './components/User';
+import { getSession, saveSession, fetchTokens } from './utils/auth';
 
-function App() {
-  const [username, setUsername] = useState(null);
+const App = () => {
+  const [user, setUser] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    // Fetch user information if logged in
-    const fetchUser = async () => {
-      const token = localStorage.getItem("jwtToken");
-      if (token) {
-        try {
-          const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/auth/me`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (response.ok) {
-            const data = await response.json();
-            setUsername(data.name);
-          } else {
-            console.error("Failed to fetch user information:", response.statusText);
-            localStorage.removeItem("jwtToken"); // Clear token if invalid
-          }
-        } catch (error) {
-          console.error("Error fetching user:", error);
-          localStorage.removeItem("jwtToken"); // Clear token on error
-        }
-      }
-    };
+    // Check if session exists in local storage
+    const session = getSession();
+    if (session) {
+      setUser(session);
+    } else {
+      // Check if redirected with a code (OAuth2 callback)
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
 
-    fetchUser();
-  }, []);
+      if (code) {
+        // Fetch tokens using the code and update the user state
+        fetchTokens(code)
+          .then((sessionData) => {
+            saveSession(sessionData); // Save session in localStorage
+            setUser(sessionData); // Update user state
+            navigate('/'); // Navigate to the main page after login
+          })
+          .catch((error) => {
+            console.error('Token fetch failed:', error);
+          });
+      }
+    }
+  }, [navigate]);
 
   return (
-    <div className="App">
-      <Navbar username={username} />
-      {username ? <Home /> : <Login setUsername={setUsername} />}
-    </div>
+    <>
+      <Navbar user={user} setUser={setUser} />
+      <div style={{ padding: '1rem' }}>
+        <h1>Main Page</h1>
+        {user ? (
+          <User user={user} />
+        ) : (
+          <div>
+            <h2>User details not available.</h2>
+          </div>
+        )}
+      </div>
+    </>
   );
-}
+};
 
 export default App;

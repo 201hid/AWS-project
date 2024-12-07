@@ -1,36 +1,38 @@
 import json
 import requests
 from aws_lambda_powertools.utilities.typing import LambdaContext
+from jose import jwt, JWTError
+import os
 
-GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v1/userinfo"
+# Environment variables
+USER_POOL_ID = os.getenv("USER_POOL_ID")
+CLIENT_ID = os.getenv("CLIENT_ID")
+REGION = os.getenv("REGION")
+REDIRECT_URI = os.getenv("REDIRECT_URI")
+FRONTEND_URL = os.getenv("FRONTEND_URL")
 
-# Hardcoded values
-HARDCODED_CLIENT_ID = "128876871494-ddangphp27biloi2uoikvr9o21bhgrll.apps.googleusercontent.com"
-HARDCODED_CLIENT_SECRET = "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"
-HARDCODED_REDIRECT_URI = "https://q01x8trvnb.execute-api.us-east-1.amazonaws.com/Prod/auth/google/callback"
-HARDCODED_FRONTEND_URL = "http://localhost:3003"
+COGNITO_ISSUER = f"https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}"
+JWKS_URL = f"{COGNITO_ISSUER}/.well-known/jwks.json"
+
+# Cached JWKS keys
+JWKS = None
+
 
 def lambda_handler(event, context: LambdaContext):
     try:
-        # Log incoming event for debugging
+        # Log the incoming event
         print("Incoming event:", json.dumps(event))
 
         path = event.get("path")
         http_method = event.get("httpMethod")
 
-        # Handle OAuth redirection request
-        if path == "/auth/google" and http_method == "POST":
+        # Handle Google OAuth request
+        if path == "/auth/google" and http_method == "GET":
             return handle_google_auth_request()
 
-        # Handle Google callback with GET (preferred for callback URLs)
+        # Handle Google OAuth callback
         elif path == "/auth/google/callback" and http_method == "GET":
-            return handle_google_callback_get(event)
-
-        # Handle preflight requests for CORS
-        elif http_method == "OPTIONS":
-            return generate_cors_response()
+            return handle_google_callback(event)
 
         # Default response for unknown paths
         return {
@@ -40,7 +42,6 @@ def lambda_handler(event, context: LambdaContext):
         }
 
     except Exception as e:
-        # General error handling
         print("Unhandled exception:", str(e))
         return {
             "statusCode": 500,
@@ -51,93 +52,114 @@ def lambda_handler(event, context: LambdaContext):
 
 def handle_google_auth_request():
     """
-    Generate the Google OAuth URL and return it.
+    Generate the Cognito-hosted Google OAuth URL.
     """
-    try:
-        google_oauth_url = (
-            f"{GOOGLE_AUTH_URL}"
-            f"?response_type=code"
-            f"&client_id={HARDCODED_CLIENT_ID}"
-            f"&redirect_uri={HARDCODED_REDIRECT_URI}"
-            f"&scope=openid%20email%20profile"
-        )
-        print("Generated Google OAuth URL:", google_oauth_url)
-        return {
-            "statusCode": 200,
-            "body": json.dumps({"redirect_url": google_oauth_url}),
-            "headers": cors_headers(),
-        }
-    except Exception as e:
-        print("Error generating Google OAuth URL:", str(e))
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": "Failed to generate Google OAuth URL"}),
-            "headers": cors_headers(),
-        }
+    cognito_oauth_url = (
+        f"{COGNITO_ISSUER}/oauth2/authorize"
+        f"?response_type=code"
+        f"&client_id={CLIENT_ID}"
+        f"&redirect_uri={REDIRECT_URI}"
+        f"&scope=email+openid+profile"
+    )
+    print("Generated Cognito OAuth URL:", cognito_oauth_url)
+    return {
+        "statusCode": 200,
+        "body": json.dumps({"redirect_url": cognito_oauth_url}),
+        "headers": cors_headers(),
+    }
 
 
-def handle_google_callback_get(event):
+def handle_google_callback(event):
     """
-    Handle the callback from Google for GET requests, exchange the code for a token, and fetch user info.
+    Validate the Cognito token and fetch user info.
     """
-    query_params = event.get("queryStringParameters", {})
-    print("Query parameters:", query_params)  # Log query parameters for debugging
-
-    code = query_params.get("code")
-    print("Received authorization code:", code)  # Log received code
-
-    if not code:
+    query_params = event.get("queryStringParameters")
+    if not query_params or "code" not in query_params:
         return {
             "statusCode": 400,
-            "body": json.dumps({"error": "'code' is missing from the query parameters"}),
+            "body": json.dumps({"error": "Authorization code is missing"}),
             "headers": cors_headers(),
         }
 
+    code = query_params["code"]
+    print("Authorization code:", code)
+
     try:
-        # Exchange code for access token
+        # Exchange authorization code for tokens
         token_response = requests.post(
-            GOOGLE_TOKEN_URL,
+            f"{COGNITO_ISSUER}/oauth2/token",
             data={
-                "code": code,
-                "client_id": HARDCODED_CLIENT_ID,
-                "client_secret": HARDCODED_CLIENT_SECRET,
-                "redirect_uri": HARDCODED_REDIRECT_URI,
                 "grant_type": "authorization_code",
+                "client_id": CLIENT_ID,
+                "redirect_uri": REDIRECT_URI,
+                "code": code,
             },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         token_response.raise_for_status()
-        token_data = token_response.json()
-        print("Token response:", token_data)
+        tokens = token_response.json()
+        print("Token response:", tokens)
 
-        if "access_token" not in token_data:
+        id_token = tokens.get("id_token")
+        if not id_token:
             return {
-                "statusCode": 500,
-                "body": json.dumps({"error": "Access token missing in response"}),
+                "statusCode": 400,
+                "body": json.dumps({"error": "ID token is missing in response"}),
                 "headers": cors_headers(),
             }
 
-        # Fetch user info
-        user_response = requests.get(
-            GOOGLE_USERINFO_URL,
-            headers={"Authorization": f"Bearer {token_data['access_token']}"},
-        )
-        user_response.raise_for_status()
-        user_info = user_response.json()
-        print("User info:", user_info)
+        # Validate the ID token
+        user_info = validate_cognito_token(id_token)
+        if not user_info:
+            return {
+                "statusCode": 401,
+                "body": json.dumps({"error": "Invalid token"}),
+                "headers": cors_headers(),
+            }
 
+        print("User info:", user_info)
         return {
             "statusCode": 200,
-            "body": json.dumps({"message": f"Hi {user_info.get('name', 'Anonymous')}", "user": user_info}),
+            "body": json.dumps({"message": f"Hi {user_info.get('email', 'User')}", "user": user_info}),
             "headers": cors_headers(),
         }
 
     except requests.exceptions.RequestException as e:
-        print("Error during callback handling:", str(e))
+        print("Error during token exchange:", str(e))
         return {
             "statusCode": 500,
-            "body": json.dumps({"error": "Failed to retrieve data from Google APIs", "details": str(e)}),
+            "body": json.dumps({"error": "Token exchange failed", "details": str(e)}),
             "headers": cors_headers(),
         }
+
+
+def validate_cognito_token(token):
+    """
+    Validate the ID token using Cognito's JWKS.
+    """
+    global JWKS
+    if not JWKS:
+        response = requests.get(JWKS_URL)
+        response.raise_for_status()
+        JWKS = response.json()
+
+    try:
+        # Decode and validate the JWT
+        header = jwt.get_unverified_header(token)
+        kid = header["kid"]
+        key = next(k for k in JWKS["keys"] if k["kid"] == kid)
+
+        decoded_token = jwt.decode(
+            token,
+            key,
+            algorithms=["RS256"],
+            audience=CLIENT_ID,
+            issuer=COGNITO_ISSUER,
+        )
+        return decoded_token
+    except JWTError as e:
+        print("Token validation failed:", str(e))
+        return None
 
 
 def cors_headers():
@@ -146,18 +168,7 @@ def cors_headers():
     """
     return {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": HARDCODED_FRONTEND_URL,
+        "Access-Control-Allow-Origin": FRONTEND_URL,
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        "Access-Control-Allow-Methods": "OPTIONS, POST, GET",
-    }
-
-
-def generate_cors_response():
-    """
-    Generate a CORS response for preflight requests.
-    """
-    return {
-        "statusCode": 204,
-        "body": "",
-        "headers": cors_headers(),
+        "Access-Control-Allow-Methods": "OPTIONS, GET, POST",
     }
