@@ -1,6 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Cognito User Pool with Google OAuth using Hosted UI
+Description: Cognito User Pool with Google OAuth, S3 bucket per user, granular IAM roles, and logging.
+
+Globals:
+  Api:
+    Cors:
+      AllowMethods: "'GET,POST,OPTIONS'"
+      AllowHeaders: "'Content-Type,Authorization'"
+      AllowOrigin: "'*'"
 
 Parameters:
   Region:
@@ -84,6 +91,77 @@ Resources:
         given_name: "given_name"
         family_name: "family_name"
 
+  CognitoUserRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-user-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: "cognito-identity.amazonaws.com"
+            Action: "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": "ap-southeast-2:ac1f831d-aeb1-4261-ae9c-9ce6eb2478e2" # Replace with your Identity Pool ID
+              "ForAnyValue:StringLike":
+                "cognito-identity.amazonaws.com:amr": "authenticated"
+      Policies:
+        - PolicyName: UserS3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub "arn:aws:s3:::user-bucket-*/*"
+
+  UploadHandlerApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      MethodSettings:
+        - LoggingLevel: INFO
+          MetricsEnabled: True
+          DataTraceEnabled: True
+          HttpMethod: "*"
+          ResourcePath: "/*"
+      AccessLogSetting:
+        DestinationArn: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/${AWS::StackName}-access-logs"
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}'
+
+  UploadHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: UploadHandler
+      Handler: upload_handler.lambda_handler
+      Runtime: python3.9
+      CodeUri: ./src/lambda
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:CreateBucket
+              - s3:PutObject
+              - s3:GetObject
+            Resource: "arn:aws:s3:::*"
+      Environment:
+        Variables:
+          DEFAULT_BUCKET_PREFIX: "user-bucket-"
+          REGION: !Ref Region
+      Events:
+        HttpUploadEndpoint:
+          Type: Api
+          Properties:
+            Path: /upload
+            Method: POST
+            RestApiId: !Ref UploadHandlerApi
+
 Outputs:
   UserPoolId:
     Description: Cognito User Pool ID
@@ -95,4 +173,8 @@ Outputs:
 
   HostedUIDomain:
     Description: Cognito Hosted UI Domain
-    Value: !Sub "https://${CognitoDomain}.auth.${Region}.amazoncognito.com"
+    Value: !Sub "https://${AWS::StackName}-auth.auth.${Region}.amazoncognito.com"
+
+  UploadApiEndpoint:
+    Description: API endpoint for handling uploads
+    Value: !Sub "https://${UploadHandlerApi}.execute-api.${Region}.amazonaws.com/Prod/upload"
